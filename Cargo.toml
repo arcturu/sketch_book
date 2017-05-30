@@ -1,0 +1,6 @@
+[package]
+name = "sketch_book"
+version = "0.1.0"
+authors = ["arcturu <spinsota@gmail.com>"]
+
+[dependencies]
