@@ -1,0 +1,47 @@
+[root]
+name = "sketch_book"
+version = "0.1.0"
+dependencies = [
+ "ui 0.1.0 (git+https://github.com/pcwalton/libui-rs.git)",
+]
+
+[[package]]
+name = "bitflags"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "libc"
+version = "0.2.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "make-cmd"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "ui"
+version = "0.1.0"
+source = "git+https://github.com/pcwalton/libui-rs.git#13299d28f69f8009be8e08e453a9b0024f153a60"
+dependencies = [
+ "bitflags 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.23 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ui-sys 0.1.0 (git+https://github.com/pcwalton/libui-rs.git)",
+]
+
+[[package]]
+name = "ui-sys"
+version = "0.1.0"
+source = "git+https://github.com/pcwalton/libui-rs.git#13299d28f69f8009be8e08e453a9b0024f153a60"
+dependencies = [
+ "libc 0.2.23 (registry+https://github.com/rust-lang/crates.io-index)",
+ "make-cmd 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[metadata]
+"checksum bitflags 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "aad18937a628ec6abcd26d1489012cc0e18c21798210f491af69ded9b881106d"
+"checksum libc 0.2.23 (registry+https://github.com/rust-lang/crates.io-index)" = "e7eb6b826bfc1fdea7935d46556250d1799b7fe2d9f7951071f4291710665e3e"
+"checksum make-cmd 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a8ca8afbe8af1785e09636acb5a41e08a765f5f0340568716c18a8700ba3c0d3"
+"checksum ui 0.1.0 (git+https://github.com/pcwalton/libui-rs.git)" = "<none>"
+"checksum ui-sys 0.1.0 (git+https://github.com/pcwalton/libui-rs.git)" = "<none>"
