@@ -1,5 +1,13 @@
 extern crate ui;
-use ui::{InitOptions, Window};
+use ui::{Area, AreaMouseEvent, AreaHandler, InitOptions, Window};
+
+struct CanvasArea;
+
+impl AreaHandler for CanvasArea {
+    fn mouse_event(&mut self, _area: &Area, area_mouse_event: &AreaMouseEvent) {
+        println!("{:?}", area_mouse_event);
+    }
+}
 
 fn main() {
     ui::init(InitOptions).unwrap();
@@ -8,6 +16,8 @@ fn main() {
         ui::quit();
         false
     }));
+    let canvas_area = Area::new(Box::new(CanvasArea));
+    window.set_child(canvas_area.into());
     window.show();
     ui::main();
 //    ui::uninit();

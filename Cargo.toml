@@ -4,4 +4,4 @@ version = "0.1.0"
 authors = ["arcturu <spinsota@gmail.com>"]
 
 [dependencies]
-ui = {git = "https://github.com/pcwalton/libui-rs.git"}
+ui = {git = "https://github.com/arcturu/libui-rs.git"}
