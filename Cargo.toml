@@ -3,8 +3,5 @@ name = "sketch_book"
 version = "0.1.0"
 authors = ["arcturu <spinsota@gmail.com>"]
 
-#[dependencies]
-#ui = {git = "https://github.com/arcturu/libui-rs.git"}
-
 [dependencies.ui]
-path = "../libui-rs/ui"
+path = "lib/libui-rs/ui"
