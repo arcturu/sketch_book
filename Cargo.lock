@@ -2,7 +2,7 @@
 name = "sketch_book"
 version = "0.1.0"
 dependencies = [
- "ui 0.1.0 (git+https://github.com/arcturu/libui-rs.git)",
+ "ui 0.1.0",
 ]
 
 [[package]]
@@ -23,17 +23,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "ui"
 version = "0.1.0"
-source = "git+https://github.com/arcturu/libui-rs.git#1a4038c8eaa1c29a7c249d4d72b6d8a772f83a5a"
 dependencies = [
  "bitflags 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.23 (registry+https://github.com/rust-lang/crates.io-index)",
- "ui-sys 0.1.0 (git+https://github.com/arcturu/libui-rs.git)",
+ "ui-sys 0.1.0",
 ]
 
 [[package]]
 name = "ui-sys"
 version = "0.1.0"
-source = "git+https://github.com/arcturu/libui-rs.git#1a4038c8eaa1c29a7c249d4d72b6d8a772f83a5a"
 dependencies = [
  "libc 0.2.23 (registry+https://github.com/rust-lang/crates.io-index)",
  "make-cmd 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -43,5 +41,3 @@ dependencies = [
 "checksum bitflags 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "aad18937a628ec6abcd26d1489012cc0e18c21798210f491af69ded9b881106d"
 "checksum libc 0.2.23 (registry+https://github.com/rust-lang/crates.io-index)" = "e7eb6b826bfc1fdea7935d46556250d1799b7fe2d9f7951071f4291710665e3e"
 "checksum make-cmd 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a8ca8afbe8af1785e09636acb5a41e08a765f5f0340568716c18a8700ba3c0d3"
-"checksum ui 0.1.0 (git+https://github.com/arcturu/libui-rs.git)" = "<none>"
-"checksum ui-sys 0.1.0 (git+https://github.com/arcturu/libui-rs.git)" = "<none>"
