@@ -4,6 +4,7 @@ use ui::{Area, InitOptions, Window};
 
 mod canvas_view;
 mod stroke;
+mod vector;
 
 fn main() {
     ui::init(InitOptions).unwrap();
