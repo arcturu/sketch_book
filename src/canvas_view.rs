@@ -73,14 +73,14 @@ impl CanvasImage {
         self.draw_stroke_sweep_circle(4.0);
     }
     pub fn draw_stroke_incremental(&mut self) {
-        if (self.strokes.len() > 0) {
+        if self.strokes.len() > 0 {
             let last = self.strokes.len() - 1;
             let len = self.strokes[last].points.len();
-            if (len == 1) {
+            if len == 1 {
                 let x = self.strokes[last].points[len-1].x;
                 let y = self.strokes[last].points[len-1].y;
                 self.fill_circle(Vec2d::new(x, y), 4.0);
-            } else if (len > 1) {
+            } else if len > 1 {
                 let x0 = self.strokes[last].points[len-2].x;
                 let y0 = self.strokes[last].points[len-2].y;
                 let x1 = self.strokes[last].points[len-1].x;
@@ -100,7 +100,7 @@ impl CanvasImage {
             timestamp: time::now().to_timespec().sec,
         }
     }
-    pub fn mouse_event(&mut self, e: &AreaMouseEvent) {
+    pub fn mouse_event(&mut self, e: &AreaMouseEvent) -> bool {
         if e.held_1_to_64 == 1 {
             let point = self.get_stroke_point(e);
             let mut new_stroke = match self.strokes.pop() {
@@ -110,9 +110,12 @@ impl CanvasImage {
             new_stroke.points.push(point);
             self.strokes.push(new_stroke);
             self.draw_stroke_incremental();
+            return true
         } else if self.strokes.len() > 0 {
             self.strokes.last_mut().unwrap().finished = true;
+            return false
         }
+        return false
     }
 }
 
@@ -125,7 +128,7 @@ pub struct CanvasArea {
 impl CanvasArea {
     pub fn new(w: f64, h: f64) -> CanvasArea {
         CanvasArea {
-            canvas_image: CanvasImage::new(300, 200), // TODO
+            canvas_image: CanvasImage::new(w as u32, h as u32), // TODO
             width: w,
             height: h,
         }
@@ -135,13 +138,15 @@ impl CanvasArea {
 impl AreaHandler for CanvasArea {
     fn mouse_event(&mut self, area: &Area, area_mouse_event: &AreaMouseEvent) {
 //        println!("{} {}", area_mouse_event.down, area_mouse_event.held_1_to_64);
-        self.canvas_image.mouse_event(area_mouse_event);
-        area.queue_redraw_all();
+        if self.canvas_image.mouse_event(area_mouse_event) {
+            area.queue_redraw_all();
+        }
     }
     fn draw(&mut self, _area: &Area, area_draw_params: &AreaDrawParams) {
         let mut image = Image::new(self.canvas_image.width as f64, self.canvas_image.height as f64);
         image.data = self.canvas_image.data.to_vec(); // deep copy
         area_draw_params.context.draw_image(0.0, 0.0, image.width, image.height, &mut image);
+//        area_draw_params.context.draw_image(0.0, 0.0, self.canvas_image.ui_image.width, self.canvas_image.ui_image.height, &mut self.canvas_image.ui_image); // It leaks!!!
     }
 }
 

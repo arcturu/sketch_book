@@ -42,6 +42,10 @@ impl Vec2d {
         self.norm().sqrt()
     }
     pub fn normalize(&self) -> Vec2d {
-        self.sdiv(self.len())
+        if self.len() != 0.0 {
+            self.sdiv(self.len())
+        } else {
+            self.clone()
+        }
     }
 }
