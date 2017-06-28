@@ -2,7 +2,8 @@ extern crate ui;
 
 use ui::{Area, InitOptions, Window};
 
-mod canvas;
+mod canvas_view;
+mod stroke;
 
 fn main() {
     ui::init(InitOptions).unwrap();
@@ -11,7 +12,7 @@ fn main() {
         ui::quit();
         false
     }));
-    let canvas_area = Area::new(Box::new(canvas::CanvasArea::new(640.0, 480.0)));
+    let canvas_area = Area::new(Box::new(canvas_view::CanvasArea::new(640.0, 480.0)));
     window.set_child(canvas_area.into());
     window.show();
     ui::main();
