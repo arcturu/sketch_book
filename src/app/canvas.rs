@@ -1,9 +1,13 @@
-extern crate time;
 extern crate ui;
-use ui::{Area, AreaMouseEvent, AreaHandler, AreaDrawParams, Image};
+extern crate time;
 
-use stroke::{Stroke, StrokePoint};
-use vector::{Vec2d};
+use message::Message;
+use reactive;
+use reactive::widget::{HandlerType, Model, AreaDrawParams, AreaMouseEvent, AreaHandler, AreaCallbacks};
+
+use app::stroke::{Stroke, StrokePoint};
+use app::vector::{Vec2d};
+use app::config::{Config};
 
 pub struct CanvasImage {
     data: Vec<u8>,
@@ -11,6 +15,7 @@ pub struct CanvasImage {
     height: u32,
     color_depth: u32, // in byte
     strokes: Vec<Stroke>,
+    brush_size: f64,
 }
 
 impl CanvasImage {
@@ -22,6 +27,7 @@ impl CanvasImage {
             height: h,
             color_depth: color_depth,
             strokes: vec![],
+            brush_size: 1.0,
         }
     }
     pub fn draw_stroke_dots(&mut self) {
@@ -70,22 +76,24 @@ impl CanvasImage {
         }
     }
     pub fn draw_stroke(&mut self) {
-        self.draw_stroke_sweep_circle(4.0);
+        let r = self.brush_size;
+        self.draw_stroke_sweep_circle(r);
     }
     pub fn draw_stroke_incremental(&mut self) {
         if self.strokes.len() > 0 {
+            let r = self.brush_size;
             let last = self.strokes.len() - 1;
             let len = self.strokes[last].points.len();
             if len == 1 {
                 let x = self.strokes[last].points[len-1].x;
                 let y = self.strokes[last].points[len-1].y;
-                self.fill_circle(Vec2d::new(x, y), 4.0);
+                self.fill_circle(Vec2d::new(x, y), r);
             } else if len > 1 {
                 let x0 = self.strokes[last].points[len-2].x;
                 let y0 = self.strokes[last].points[len-2].y;
                 let x1 = self.strokes[last].points[len-1].x;
                 let y1 = self.strokes[last].points[len-1].y;
-                self.draw_line_with_circle(Vec2d::new(x0, y0), Vec2d::new(x1, y1), 4.0);
+                self.draw_line_with_circle(Vec2d::new(x0, y0), Vec2d::new(x1, y1), r);
             }
         }
     }
@@ -119,34 +127,45 @@ impl CanvasImage {
     }
 }
 
-pub struct CanvasArea {
+
+pub struct CanvasModel {
     canvas_image: CanvasImage,
+//    config: Rc<Config>,
     width: f64,
     height: f64,
 }
 
-impl CanvasArea {
-    pub fn new(w: f64, h: f64) -> CanvasArea {
-        CanvasArea {
-            canvas_image: CanvasImage::new(w as u32, h as u32), // TODO
+impl Model<Message> for CanvasModel {
+    fn update(&mut self, message: &Message, widget_handler: &mut HandlerType) {
+        if let &Message::BrushSliderUpdate(size) = message {
+            self.canvas_image.brush_size = size as f64;
+        }
+        if let &mut HandlerType::Area(ref area) = widget_handler {
+            area.queue_redraw_all();
+        }
+    }
+}
+
+impl AreaCallbacks for CanvasModel {
+    fn on_draw(&mut self, area: &AreaHandler, area_draw_params: &AreaDrawParams) {
+        let mut image = ui::Image::new(self.canvas_image.width as f64, self.canvas_image.height as f64);
+        image.data = self.canvas_image.data.to_vec(); // deep copy
+        area_draw_params.context.draw_image(0.0, 0.0, image.width, image.height, &mut image);
+    }
+
+    fn on_mouse_event(&mut self, area: &AreaHandler, area_mouse_event: &AreaMouseEvent) {
+        if self.canvas_image.mouse_event(area_mouse_event) {
+            area.queue_redraw_all();
+        }
+    }
+}
+
+impl CanvasModel {
+    pub fn new(w: f64, h: f64) -> CanvasModel {
+        CanvasModel {
+            canvas_image: CanvasImage::new(w as u32, h as u32),
             width: w,
             height: h,
         }
     }
 }
-
-impl AreaHandler for CanvasArea {
-    fn mouse_event(&mut self, area: &Area, area_mouse_event: &AreaMouseEvent) {
-//        println!("{} {}", area_mouse_event.down, area_mouse_event.held_1_to_64);
-        if self.canvas_image.mouse_event(area_mouse_event) {
-            area.queue_redraw_all();
-        }
-    }
-    fn draw(&mut self, _area: &Area, area_draw_params: &AreaDrawParams) {
-        let mut image = Image::new(self.canvas_image.width as f64, self.canvas_image.height as f64);
-        image.data = self.canvas_image.data.to_vec(); // deep copy
-        area_draw_params.context.draw_image(0.0, 0.0, image.width, image.height, &mut image);
-//        area_draw_params.context.draw_image(0.0, 0.0, self.canvas_image.ui_image.width, self.canvas_image.ui_image.height, &mut self.canvas_image.ui_image); // It leaks!!!
-    }
-}
-
