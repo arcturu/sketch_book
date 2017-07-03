@@ -10,6 +10,50 @@ use app::vector::{Vec2d};
 use app::config::{Config};
 use app::brush::{Brush};
 
+#[derive(Debug)]
+pub struct Rect<T: PartialOrd> {
+    lt_x: T,
+    lt_y: T,
+    rb_x: T,
+    rb_y: T,
+}
+
+impl<T: PartialOrd> Rect<T> {
+    pub fn new(lt_x: T, lt_y: T, rb_x: T, rb_y: T) -> Rect<T> {
+        Rect {
+            lt_x: lt_x,
+            lt_y: lt_y,
+            rb_x: rb_x,
+            rb_y: rb_y,
+        }
+    }
+
+    pub fn merge(&mut self, other: Rect<T>) {
+        if other.lt_x < self.lt_x {
+            self.lt_x = other.lt_x;
+        }
+        if other.lt_y < self.lt_y {
+            self.lt_y = other.lt_y;
+        }
+        if other.rb_x > self.rb_x {
+            self.rb_x = other.rb_x;
+        }
+        if other.rb_y > self.rb_y {
+            self.rb_y = other.rb_y;
+        }
+    }
+}
+
+pub fn saturate<T: PartialOrd>(v: T, min: T, max: T) -> T {
+    if v < min {
+        min
+    } else if v > max {
+        max
+    } else {
+        v
+    }
+}
+
 pub struct CanvasImage {
     data: Vec<u8>,
     width: u32,
@@ -41,17 +85,17 @@ impl CanvasImage {
 //            }
 //        }
 //    }
-    pub fn fill_circle(&mut self, c: Vec2d, brush: &Brush) {
+    pub fn fill_circle(&mut self, c: Vec2d, brush: &Brush) -> Option<Rect<i32>> {
         let r_int = brush.size as i32;
-        for offset_y in -r_int..r_int {
-            for offset_x in -r_int..r_int {
-                let cx_int = c.x as i32;
-                let cy_int = c.y as i32;
-                let x_int = (c.x as i32) + (offset_x as i32);
-                let y_int = (c.y as i32) + (offset_y as i32);
-                if (x_int - cx_int).pow(2) + (y_int - cy_int).pow(2) < r_int.pow(2)
-                   && x_int >= 0 && x_int < self.width as i32
-                   && y_int >= 0 && y_int < self.height as i32 {
+        let cx_int = c.x as i32;
+        let cy_int = c.y as i32;
+        let lt_x = saturate(cx_int - r_int, 0, self.width as i32);
+        let lt_y = saturate(cy_int - r_int, 0, self.height as i32);
+        let rb_x = saturate(cx_int + r_int, 0, self.width as i32);
+        let rb_y = saturate(cy_int + r_int, 0, self.height as i32);
+        for y_int in lt_y..rb_y {
+            for x_int in lt_x..rb_x {
+                if (x_int - cx_int).pow(2) + (y_int - cy_int).pow(2) < r_int.pow(2) {
                     let col = brush.get_color();
                     self.data[((y_int * (self.width as i32) + x_int) * 4 + 0) as usize] = (col.r * 255.0) as u8;
                     self.data[((y_int * (self.width as i32) + x_int) * 4 + 1) as usize] = (col.g * 255.0) as u8;
@@ -60,41 +104,63 @@ impl CanvasImage {
                 }
             }
         }
+        Some(Rect::new(lt_x, lt_y, rb_x, rb_y))
     }
-    pub fn draw_line_with_circle(&mut self, p0: Vec2d, p1: Vec2d, brush: &Brush) {
+    pub fn draw_line_with_circle(&mut self, p0: Vec2d, p1: Vec2d, brush: &Brush) -> Option<Rect<i32>> {
         let d = p1 - p0;
+        let mut rect: Option<Rect<i32>> = None;
         for t in 0..(d.len() as usize) + 1 {
-            self.fill_circle(p0 + d.normalize().smul(t as f64), brush);
+            let r1 = self.fill_circle(p0 + d.normalize().smul(t as f64), brush);
+            if let Some(r1) = r1 {
+                if let Some(mut r0) = rect {
+                    r0.merge(r1);
+                    rect = Some(r0);
+                } else {
+                    rect = Some(r1);
+                }
+            }
         }
+        rect
     }
-    pub fn draw_stroke_sweep_circle(&mut self, strokes: &Vec<Stroke>, brush: &Brush) {
+    pub fn draw_stroke_sweep_circle(&mut self, strokes: &Vec<Stroke>, brush: &Brush) -> Option<Rect<i32>> {
+        let mut rect: Option<Rect<i32>> = None;
         for i in 0..strokes.len() {
             for j in 1..strokes[i].points.len() {
                 let p0 = Vec2d::new(strokes[i].points[j-1].x as f64, strokes[i].points[j-1].y as f64);
                 let p1 = Vec2d::new(strokes[i].points[j].x as f64, strokes[i].points[j].y as f64);
-                self.draw_line_with_circle(p0, p1, brush);
+                let r1 = self.draw_line_with_circle(p0, p1, brush);
+                if let Some(r1) = r1 {
+                    if let Some(mut r0) = rect {
+                        r0.merge(r1);
+                        rect = Some(r0);
+                    } else {
+                        rect = Some(r1);
+                    }
+                }
             }
         }
+        rect
     }
-    pub fn draw_stroke(&mut self, strokes: &Vec<Stroke>, brush: &Brush) {
-        self.draw_stroke_sweep_circle(strokes, brush);
+    pub fn draw_stroke(&mut self, strokes: &Vec<Stroke>, brush: &Brush) -> Option<Rect<i32>> {
+        self.draw_stroke_sweep_circle(strokes, brush)
     }
-    pub fn draw_stroke_incremental(&mut self, strokes: &Vec<Stroke>, brush: &Brush) {
+    pub fn draw_stroke_incremental(&mut self, strokes: &Vec<Stroke>, brush: &Brush) -> Option<Rect<i32>> {
         if strokes.len() > 0 {
             let last = strokes.len() - 1;
             let len = strokes[last].points.len();
             if len == 1 {
                 let x = strokes[last].points[len-1].x;
                 let y = strokes[last].points[len-1].y;
-                self.fill_circle(Vec2d::new(x, y), brush);
+                return self.fill_circle(Vec2d::new(x, y), brush);
             } else if len > 1 {
                 let x0 = strokes[last].points[len-2].x;
                 let y0 = strokes[last].points[len-2].y;
                 let x1 = strokes[last].points[len-1].x;
                 let y1 = strokes[last].points[len-1].y;
-                self.draw_line_with_circle(Vec2d::new(x0, y0), Vec2d::new(x1, y1), brush);
+                return self.draw_line_with_circle(Vec2d::new(x0, y0), Vec2d::new(x1, y1), brush);
             }
         }
+        return None;
     }
 }
 
@@ -118,7 +184,7 @@ impl Layer {
             strokes: vec![],
         }
     }
-    pub fn mouse_event(&mut self, brush: &Brush, e: StrokePoint) -> bool {
+    pub fn mouse_event(&mut self, brush: &Brush, e: StrokePoint) -> Option<Rect<i32>> {
         if e.dragging {
             let mut new_stroke = match self.strokes.pop() {
                 Some(s) => if !s.finished { s } else {
@@ -129,26 +195,28 @@ impl Layer {
             };
             new_stroke.points.push(e);
             self.strokes.push(new_stroke);
-            self.image.draw_stroke_incremental(&self.strokes, brush);
-            return true
+            self.image.draw_stroke_incremental(&self.strokes, brush)
         } else if self.strokes.len() > 0 {
             self.strokes.last_mut().unwrap().finished = true;
-            return false
+            None
+        } else {
+            None
         }
-        return false
     }
 
-    pub fn composite(&self, data: &mut Vec<u8>) {
+    pub fn composite(&self, data: &mut Vec<u8>, rect: &Rect<i32>) {
         match self.blend_mode {
             BlendMode::Normal => {
-                for i in 0..(data.len() / 4 / self.image.color_depth as usize) {
-                    let j = i * 4;
-                    let a_back = data[j+3] as f64 / 255.0;
-                    let a_front = self.image.data[j+3] as f64 / 255.0;
-                    data[j+0] = (self.image.data[j+0] as f64 * a_front + data[j+0] as f64 * a_back * (1.0 - a_front)) as u8;
-                    data[j+1] = (self.image.data[j+1] as f64 * a_front + data[j+1] as f64 * a_back * (1.0 - a_front)) as u8;
-                    data[j+2] = (self.image.data[j+2] as f64 * a_front + data[j+2] as f64 * a_back * (1.0 - a_front)) as u8;
-                    data[j+3] = ((a_front + a_back * (1.0 - a_front)) * 255.0) as u8;
+                for y in (rect.lt_y as usize)..(rect.rb_y as usize) {
+                    for x in (rect.lt_x as usize)..(rect.rb_x as usize) {
+                        let j = (y * self.image.width as usize + x) * 4;
+                        let a_back = data[j+3] as f64 / 255.0;
+                        let a_front = self.image.data[j+3] as f64 / 255.0;
+                        data[j+0] = (self.image.data[j+0] as f64 * a_front + data[j+0] as f64 * a_back * (1.0 - a_front)) as u8;
+                        data[j+1] = (self.image.data[j+1] as f64 * a_front + data[j+1] as f64 * a_back * (1.0 - a_front)) as u8;
+                        data[j+2] = (self.image.data[j+2] as f64 * a_front + data[j+2] as f64 * a_back * (1.0 - a_front)) as u8;
+                        data[j+3] = ((a_front + a_back * (1.0 - a_front)) * 255.0) as u8;
+                    }
                 }
             }
         }
@@ -163,6 +231,7 @@ impl Layer {
 pub struct CanvasModel {
     layers: Vec<Layer>,
     active_layer: usize,
+    image_cache: Vec<u8>,
 //    config: Rc<Config>,
     width: f64,
     height: f64,
@@ -245,9 +314,12 @@ impl Model<Message> for CanvasModel {
             },
             &Message::StrokeCloseButton => { // FIXME fixed layer assignment
                 let st = get_closed_stroke(&self.layers[1].strokes);
-                self.layers[0].image.draw_stroke(&st, &self.current_brush)
+                if let Some(rect) = self.layers[0].image.draw_stroke(&st, &self.current_brush) {
+                    self.update_cache(&rect);
+                }
             },
             &Message::ClearCanvasButton => {
+                self.image_cache = vec![0; (self.width * self.height * 4.0) as usize];
                 for l in &mut self.layers {
                     l.clear();
                 }
@@ -262,18 +334,9 @@ impl Model<Message> for CanvasModel {
 
 impl AreaCallbacks for CanvasModel {
     fn on_draw(&mut self, area: &AreaHandler, area_draw_params: &AreaDrawParams) {
-        // TODO: efficiently!!!
+        // TODO: reduce copy cost (it may require changing libui)
         let mut image = ui::Image::new(self.width, self.height);
-        let mut first = true;
-        for l in &mut self.layers {
-            if !l.visible { continue; }
-            if first {
-                image.data = l.image.data.to_vec();
-                first = false;
-            } else {
-                l.composite(&mut image.data);
-            }
-        }
+        image.data = self.image_cache.to_vec();
         area_draw_params.context.draw_image(0.0, 0.0, image.width, image.height, &mut image);
     }
 
@@ -288,7 +351,8 @@ impl AreaCallbacks for CanvasModel {
             timestamp: time::now().to_timespec().sec,
             dragging: dragging,
         };
-        if self.layers[self.active_layer].mouse_event(&self.current_brush, point) {
+        if let Some(rect) = self.layers[self.active_layer].mouse_event(&self.current_brush, point) {
+            self.update_cache(&rect);
             area.queue_redraw_all();
         }
     }
@@ -299,9 +363,15 @@ impl CanvasModel {
         CanvasModel {
             layers: vec![Layer::new(w as u32, h as u32, 0), Layer::new(w as u32, h as u32, 0)],
             current_brush: Brush::new(),
+            image_cache: vec![0; (w * h * 4.0) as usize],
             active_layer: 1,
             width: w,
             height: h,
+        }
+    }
+    pub fn update_cache(&mut self, rect: &Rect<i32>) {
+        for l in &self.layers {
+            l.composite(&mut self.image_cache, &rect);
         }
     }
 }
