@@ -1,5 +1,8 @@
+use app::vector::Vec2d;
 use app::brush::Brush;
+use std::ops::{Index, Sub};
 
+#[derive(Clone)]
 pub struct StrokePoint {
     pub x: f64,
     pub y: f64,
@@ -10,10 +13,18 @@ pub struct StrokePoint {
     pub dragging: bool,
 }
 
+#[derive(Clone)]
 pub struct Stroke {
     pub points: Vec<StrokePoint>,
     pub brush: Brush,
     pub finished: bool,
+}
+
+impl Index<usize> for Stroke {
+    type Output = StrokePoint;
+    fn index(&self, i: usize) -> &StrokePoint {
+        &self.points[i]
+    }
 }
 
 impl Stroke {
@@ -23,5 +34,21 @@ impl Stroke {
             brush: brush,
             finished: false,
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.points.len()
+    }
+
+    pub fn reverse(&mut self) {
+        self.points.reverse();
+    }
+
+    pub fn extend(&mut self, rhs: Stroke) {
+        self.points.extend(rhs.points);
+    }
+
+    pub fn push(&mut self, item: StrokePoint) {
+        self.points.push(item);
     }
 }

@@ -3,6 +3,7 @@ use reactive::widget::{AreaDrawParams};
 pub enum Message {
     BrushToggleButton,
     StrokeCloseButton,
+    ClearCanvasButton,
     BrushSliderUpdate(i64),
     CanvasMouseEvent{x: f64, y: f64, down: bool, up: bool, dragging: bool},
 }

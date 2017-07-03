@@ -69,6 +69,10 @@ fn main() {
                         .on_click(|button| {
                             reactive::emit(Message::StrokeCloseButton);
                         }))
+                    .append(Button::new("clear")
+                        .on_click(|button| {
+                            reactive::emit(Message::ClearCanvasButton);
+                        }))
                     .append(Slider::new(0, 10)
                         .on_change(|slider| {
                             reactive::emit(Message::BrushSliderUpdate(slider.value()));

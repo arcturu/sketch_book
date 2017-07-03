@@ -20,10 +20,10 @@ pub struct CanvasImage {
 }
 
 impl CanvasImage {
-    pub fn new(w: u32, h: u32) -> CanvasImage {
+    pub fn new(w: u32, h: u32, init_value: u8) -> CanvasImage {
         let color_depth = 1; // 1 byte = 0..255 per color
         CanvasImage {
-            data: vec![255; (w * h * color_depth * 4) as usize],
+            data: vec![init_value; (w * h * color_depth * 4) as usize],
             width: w,
             height: h,
             color_depth: color_depth,
@@ -56,6 +56,7 @@ impl CanvasImage {
                     self.data[((y_int * (self.width as i32) + x_int) * 4 + 0) as usize] = (col.r * 255.0) as u8;
                     self.data[((y_int * (self.width as i32) + x_int) * 4 + 1) as usize] = (col.g * 255.0) as u8;
                     self.data[((y_int * (self.width as i32) + x_int) * 4 + 2) as usize] = (col.b * 255.0) as u8;
+                    self.data[((y_int * (self.width as i32) + x_int) * 4 + 3) as usize] = 255;
                 }
             }
         }
@@ -97,24 +98,33 @@ impl CanvasImage {
     }
 }
 
+pub enum BlendMode {
+    Normal,
+}
+
 pub struct Layer {
     visible: bool,
+    blend_mode: BlendMode,
     image: CanvasImage,
     strokes: Vec<Stroke>,
 }
 
 impl Layer {
-    pub fn new(width: u32, height: u32) -> Layer {
+    pub fn new(width: u32, height: u32, init_value: u8) -> Layer {
         Layer {
             visible: true,
-            image: CanvasImage::new(width, height),
+            blend_mode: BlendMode::Normal,
+            image: CanvasImage::new(width, height, init_value),
             strokes: vec![],
         }
     }
     pub fn mouse_event(&mut self, brush: &Brush, e: StrokePoint) -> bool {
         if e.dragging {
             let mut new_stroke = match self.strokes.pop() {
-                Some(s) => if !s.finished { s } else { Stroke::new(10, brush.clone()) },
+                Some(s) => if !s.finished { s } else {
+                    self.strokes.push(s);
+                    Stroke::new(10, brush.clone())
+                },
                 None => Stroke::new(10, brush.clone()),
             };
             new_stroke.points.push(e);
@@ -127,6 +137,27 @@ impl Layer {
         }
         return false
     }
+
+    pub fn composite(&self, data: &mut Vec<u8>) {
+        match self.blend_mode {
+            BlendMode::Normal => {
+                for i in 0..(data.len() / 4 / self.image.color_depth as usize) {
+                    let j = i * 4;
+                    let a_back = data[j+3] as f64 / 255.0;
+                    let a_front = self.image.data[j+3] as f64 / 255.0;
+                    data[j+0] = (self.image.data[j+0] as f64 * a_front + data[j+0] as f64 * a_back * (1.0 - a_front)) as u8;
+                    data[j+1] = (self.image.data[j+1] as f64 * a_front + data[j+1] as f64 * a_back * (1.0 - a_front)) as u8;
+                    data[j+2] = (self.image.data[j+2] as f64 * a_front + data[j+2] as f64 * a_back * (1.0 - a_front)) as u8;
+                    data[j+3] = ((a_front + a_back * (1.0 - a_front)) * 255.0) as u8;
+                }
+            }
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.strokes = vec![];
+        self.image.data = vec![0; (self.image.width * self.image.height * self.image.color_depth * 4) as usize];
+    }
 }
 
 pub struct CanvasModel {
@@ -138,6 +169,71 @@ pub struct CanvasModel {
     current_brush: Brush, // TODO move it to config
 }
 
+fn connect_closed_points(mut strokes: Vec<Stroke>) -> Vec<Stroke> {
+    let mut min = ::std::f64::INFINITY;
+    let mut min_i = 0;
+    let mut min_j = 0;
+    let mut min_k = 0;
+    let mut min_l = 0;
+    for i in 0..strokes.len() {
+        for j in i..strokes.len() {
+            if i == j { continue; }
+            if strokes[i].len() < 2 || strokes[j].len() < 2 {
+                println!("short stroke!"); // TODO FIXME
+                continue;
+            }
+            for k in 0..2 {
+                for l in 0..2 {
+                    let m1 = if k == 0 { &strokes[i][0] } else { &strokes[i][strokes[i].len()-1] };
+                    let m2 = if l == 0 { &strokes[j][0] } else { &strokes[j][strokes[j].len()-1] };
+                    let d = (Vec2d::new(m1.x, m1.y) - Vec2d::new(m2.x, m2.y)).norm();
+                    if d < min {
+                        min = d; min_i = i; min_j = j; min_k = k; min_l = l;
+                    }
+                }
+            }
+        }
+    }
+    let mut s1;
+    let mut s2;
+    if min_i < min_j {
+        s2 = strokes.swap_remove(min_j);
+        s1 = strokes.swap_remove(min_i);
+    } else {
+        s1 = strokes.swap_remove(min_i);
+        s2 = strokes.swap_remove(min_j);
+    }
+    if min_k > min_l {
+        s1.extend(s2);
+        strokes.push(s1);
+    } else if min_k == min_l {
+        if min_k == 1 {
+            s1.reverse();
+            s2.extend(s1);
+            strokes.push(s2);
+        } else {
+            s2.reverse();
+            s1.extend(s2);
+            strokes.push(s1);
+        }
+    } else {
+        s2.extend(s1);
+        strokes.push(s2);
+    }
+    strokes
+}
+
+// FIXME error handling
+fn get_closed_stroke(strokes: &Vec<Stroke>) -> Vec<Stroke> {
+    let mut working = strokes.clone();
+    while working.len() > 1 {
+        working = connect_closed_points(working);
+    }
+    let first = working[0][0].clone();
+    working[0].push(first);
+    working
+}
+
 impl Model<Message> for CanvasModel {
     fn update(&mut self, message: &Message, widget_handler: &mut HandlerType) {
         match message {
@@ -147,9 +243,15 @@ impl Model<Message> for CanvasModel {
             &Message::BrushToggleButton => {
                 // TODO end stroke if valid and begen new one
             },
-            &Message::StrokeCloseButton => {
-//                let st = self.canvas_image.get_closed_stroke();
+            &Message::StrokeCloseButton => { // FIXME fixed layer assignment
+                let st = get_closed_stroke(&self.layers[1].strokes);
+                self.layers[0].image.draw_stroke(&st, &self.current_brush)
             },
+            &Message::ClearCanvasButton => {
+                for l in &mut self.layers {
+                    l.clear();
+                }
+            }
             _ => (),
         }
         if let &mut HandlerType::Area(ref area) = widget_handler {
@@ -160,12 +262,19 @@ impl Model<Message> for CanvasModel {
 
 impl AreaCallbacks for CanvasModel {
     fn on_draw(&mut self, area: &AreaHandler, area_draw_params: &AreaDrawParams) {
+        // TODO: efficiently!!!
+        let mut image = ui::Image::new(self.width, self.height);
+        let mut first = true;
         for l in &mut self.layers {
             if !l.visible { continue; }
-            let mut image = ui::Image::new(l.image.width as f64, l.image.height as f64);
-            image.data = l.image.data.to_vec(); // deep copy
-            area_draw_params.context.draw_image(0.0, 0.0, image.width, image.height, &mut image);
+            if first {
+                image.data = l.image.data.to_vec();
+                first = false;
+            } else {
+                l.composite(&mut image.data);
+            }
         }
+        area_draw_params.context.draw_image(0.0, 0.0, image.width, image.height, &mut image);
     }
 
     fn on_mouse_event(&mut self, area: &AreaHandler, area_mouse_event: &AreaMouseEvent) {
@@ -188,9 +297,9 @@ impl AreaCallbacks for CanvasModel {
 impl CanvasModel {
     pub fn new(w: f64, h: f64) -> CanvasModel {
         CanvasModel {
-            layers: vec![Layer::new(w as u32, h as u32)],
+            layers: vec![Layer::new(w as u32, h as u32, 0), Layer::new(w as u32, h as u32, 0)],
             current_brush: Brush::new(),
-            active_layer: 0,
+            active_layer: 1,
             width: w,
             height: h,
         }
