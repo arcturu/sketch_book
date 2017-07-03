@@ -65,6 +65,10 @@ fn main() {
                             reactive::emit(Message::BrushToggleButton);
                         })
                         .set_model(Rc::new(RefCell::new(HoeModel::new()))))
+                    .append(Button::new("close stroke")
+                        .on_click(|button| {
+                            reactive::emit(Message::StrokeCloseButton);
+                        }))
                     .append(Slider::new(0, 10)
                         .on_change(|slider| {
                             reactive::emit(Message::BrushSliderUpdate(slider.value()));

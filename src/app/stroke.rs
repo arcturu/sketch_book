@@ -7,6 +7,7 @@ pub struct StrokePoint {
     pub tilt_x: f64,
     pub tilt_y: f64,
     pub timestamp: i64,
+    pub dragging: bool,
 }
 
 pub struct Stroke {
