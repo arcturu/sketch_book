@@ -1,3 +1,5 @@
+use app::brush::Brush;
+
 pub struct StrokePoint {
     pub x: f64,
     pub y: f64,
@@ -9,13 +11,15 @@ pub struct StrokePoint {
 
 pub struct Stroke {
     pub points: Vec<StrokePoint>,
+    pub brush: Brush,
     pub finished: bool,
 }
 
 impl Stroke {
-    pub fn new(initial_size: usize) -> Stroke {
+    pub fn new(initial_size: usize, brush: Brush) -> Stroke {
         Stroke {
             points: vec![],
+            brush: brush,
             finished: false,
         }
     }

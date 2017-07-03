@@ -8,6 +8,7 @@ use reactive::widget::{HandlerType, Model, AreaDrawParams, AreaMouseEvent, AreaH
 use app::stroke::{Stroke, StrokePoint};
 use app::vector::{Vec2d};
 use app::config::{Config};
+use app::brush::{Brush};
 
 pub struct CanvasImage {
     data: Vec<u8>,
@@ -15,7 +16,7 @@ pub struct CanvasImage {
     height: u32,
     color_depth: u32, // in byte
     strokes: Vec<Stroke>,
-    brush_size: f64,
+    current_brush: Brush,
 }
 
 impl CanvasImage {
@@ -27,7 +28,7 @@ impl CanvasImage {
             height: h,
             color_depth: color_depth,
             strokes: vec![],
-            brush_size: 1.0,
+            current_brush: Brush::new(),
         }
     }
     pub fn draw_stroke_dots(&mut self) {
@@ -53,9 +54,10 @@ impl CanvasImage {
                 if (x_int - cx_int).pow(2) + (y_int - cy_int).pow(2) < r_int.pow(2)
                    && x_int >= 0 && x_int < self.width as i32
                    && y_int >= 0 && y_int < self.height as i32 {
-                    for i in 0..3 {
-                        self.data[((y_int * (self.width as i32) + x_int) * 4 + i) as usize] = 0;
-                    }
+                    let col = self.current_brush.get_color();
+                    self.data[((y_int * (self.width as i32) + x_int) * 4 + 0) as usize] = (col.r * 255.0) as u8;
+                    self.data[((y_int * (self.width as i32) + x_int) * 4 + 1) as usize] = (col.g * 255.0) as u8;
+                    self.data[((y_int * (self.width as i32) + x_int) * 4 + 2) as usize] = (col.b * 255.0) as u8;
                 }
             }
         }
@@ -76,12 +78,12 @@ impl CanvasImage {
         }
     }
     pub fn draw_stroke(&mut self) {
-        let r = self.brush_size;
+        let r = self.current_brush.size;
         self.draw_stroke_sweep_circle(r);
     }
     pub fn draw_stroke_incremental(&mut self) {
         if self.strokes.len() > 0 {
-            let r = self.brush_size;
+            let r = self.current_brush.size;
             let last = self.strokes.len() - 1;
             let len = self.strokes[last].points.len();
             if len == 1 {
@@ -112,8 +114,8 @@ impl CanvasImage {
         if e.held_1_to_64 == 1 {
             let point = self.get_stroke_point(e);
             let mut new_stroke = match self.strokes.pop() {
-                Some(s) => if !s.finished { s } else { Stroke::new(10) },
-                None => Stroke::new(10),
+                Some(s) => if !s.finished { s } else { Stroke::new(10, self.current_brush.clone()) },
+                None => Stroke::new(10, self.current_brush.clone()),
             };
             new_stroke.points.push(point);
             self.strokes.push(new_stroke);
@@ -137,8 +139,15 @@ pub struct CanvasModel {
 
 impl Model<Message> for CanvasModel {
     fn update(&mut self, message: &Message, widget_handler: &mut HandlerType) {
-        if let &Message::BrushSliderUpdate(size) = message {
-            self.canvas_image.brush_size = size as f64;
+        match message {
+            &Message::BrushSliderUpdate(size) => {
+                self.canvas_image.current_brush.size = size as f64;
+            },
+            &Message::BrushToggleButton => {
+                self.canvas_image.current_brush.contour = !self.canvas_image.current_brush.contour;
+                // TODO end stroke if valid and begen new one
+            }
+            _ => (),
         }
         if let &mut HandlerType::Area(ref area) = widget_handler {
             area.queue_redraw_all();

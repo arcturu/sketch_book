@@ -60,9 +60,9 @@ fn main() {
             Container::new_horizontal()
                 .set_padding(true)
                 .append(Container::new_vertical()
-                    .append(Button::new("Button1")
+                    .append(Button::new("toggle")
                         .on_click(|button| {
-                            reactive::emit(Message::Button1);
+                            reactive::emit(Message::BrushToggleButton);
                         })
                         .set_model(Rc::new(RefCell::new(HoeModel::new()))))
                     .append(Slider::new(0, 10)
