@@ -73,6 +73,10 @@ fn main() {
                         .on_click(|button| {
                             reactive::emit(Message::ClearCanvasButton);
                         }))
+                    .append(Button::new("save")
+                        .on_click(|button| {
+                            reactive::emit(Message::OutputButton);
+                        }))
                     .append(Slider::new(0, 10)
                         .on_change(|slider| {
                             reactive::emit(Message::BrushSliderUpdate(slider.value()));

@@ -9,6 +9,7 @@ pub enum BrushTip {
 pub struct Brush {
     pub tip: BrushTip,
     pub size: f64,
+    pub color: Color<f64>,
 }
 
 impl Brush {
@@ -16,14 +17,11 @@ impl Brush {
         Brush {
             tip: BrushTip::Contour,
             size: 2.0,
+            color: Color::new(0.0, 0.0, 0.0, 1.0),
         }
     }
 
-    pub fn get_color(&self) -> Color {
-        if self.tip == BrushTip::Contour {
-            Color::new(0.0, 0.0, 0.0)
-        } else {
-            Color::new(0.0, 0.0, 1.0)
-        }
+    pub fn get_color(&self) -> &Color<f64> {
+        &self.color
     }
 }

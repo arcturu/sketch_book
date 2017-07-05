@@ -1,14 +1,21 @@
 extern crate ui;
 extern crate time;
 
+use std::path::Path;
+use std::fs::File;
+use std::error::Error;
+use std::io::*;
+use std::process::Command;
+
 use message::Message;
 use reactive;
 use reactive::widget::{HandlerType, Model, AreaDrawParams, AreaMouseEvent, AreaHandler, AreaCallbacks};
 
 use app::stroke::{Stroke, StrokePoint};
-use app::vector::{Vec2d};
+use app::vector::{Vec2d, Vec3d};
 use app::config::{Config};
 use app::brush::{Brush};
+use app::color::{Color, ColorRefMut};
 
 #[derive(Debug)]
 pub struct Rect<T: PartialOrd> {
@@ -59,8 +66,6 @@ pub struct CanvasImage {
     width: u32,
     height: u32,
     color_depth: u32, // in byte
-//    strokes: Vec<Stroke>,
-//    current_brush: Brush,
 }
 
 impl CanvasImage {
@@ -72,6 +77,22 @@ impl CanvasImage {
             height: h,
             color_depth: color_depth,
         }
+    }
+
+    pub fn at(&self, x: usize, y: usize) -> Color<u8> {
+        Color {
+            r: self.data[(y * self.width as usize + x) * 4 + 0],
+            g: self.data[(y * self.width as usize + x) * 4 + 1],
+            b: self.data[(y * self.width as usize + x) * 4 + 2],
+            a: self.data[(y * self.width as usize + x) * 4 + 3],
+        }
+    }
+
+    pub fn set_color(&mut self, x: usize, y: usize, color: Color<u8>) {
+        self.data[(y * self.width as usize + x) * 4 + 0] = color.r;
+        self.data[(y * self.width as usize + x) * 4 + 1] = color.g;
+        self.data[(y * self.width as usize + x) * 4 + 2] = color.b;
+        self.data[(y * self.width as usize + x) * 4 + 3] = color.a;
     }
 //    pub fn draw_stroke_dots(&mut self) {
 //        for s in &self.strokes {
@@ -207,8 +228,10 @@ impl Layer {
     pub fn composite(&self, data: &mut Vec<u8>, rect: &Rect<i32>) {
         match self.blend_mode {
             BlendMode::Normal => {
-                for y in (rect.lt_y as usize)..(rect.rb_y as usize) {
-                    for x in (rect.lt_x as usize)..(rect.rb_x as usize) {
+                for y in saturate(rect.lt_y as usize, 0, self.image.height as usize)..
+                         saturate(rect.rb_y as usize, 0, self.image.height as usize) {
+                    for x in saturate(rect.lt_x as usize, 0, self.image.width as usize)..
+                             saturate(rect.rb_x as usize, 0, self.image.width as usize) {
                         let j = (y * self.image.width as usize + x) * 4;
                         let a_back = data[j+3] as f64 / 255.0;
                         let a_front = self.image.data[j+3] as f64 / 255.0;
@@ -303,6 +326,99 @@ fn get_closed_stroke(strokes: &Vec<Stroke>) -> Vec<Stroke> {
     working
 }
 
+fn inside_curve(stroke: &Stroke, p: &Vec2d) -> bool {
+    let mut cn = 0;
+    for i in 0..stroke.len()-1 {
+        if (stroke[i].y <= p.y && stroke[i+1].y > p.y) || (stroke[i].y > p.y && stroke[i+1].y <= p.y) {
+            let vt = (p.y - stroke[i].y) / (stroke[i+1].y - stroke[i].y);
+            if p.x < (stroke[i].x + (vt * (stroke[i+1].x - stroke[i].x))) {
+                cn += 1;
+            }
+        }
+    }
+    (cn % 2) == 1
+}
+
+fn get_distance_between_nearest_stroke(stroke: &Stroke, v: &Vec2d) -> u8 {
+    let mut d = ::std::f64::INFINITY;
+    let mut min_i = 0;
+    for i in 0..stroke.points.len() {
+        let p = &stroke.points[i];
+        let l = (Vec2d::new(p.x, p.y) - v.clone()).norm().sqrt();
+        if d > l {
+            d = l;
+            min_i = i;
+        }
+    }
+    d as u8
+}
+
+fn diffuse_normal(normals: &Vec<(Vec2d, Vec3d)>, p: Vec2d) -> Vec3d {
+    let mut diffused_n = Vec3d::new(0.0, 0.0, 0.0);
+    let num_points = normals.len() as f64;
+    for &(s, n) in normals {
+        diffused_n = diffused_n + n.clone().smul(1.0 / num_points * (Vec2d::new(s.x, s.y) - p).norm().sqrt());
+    }
+    diffused_n.normalize()
+}
+
+fn get_normal_field(w: u32, h: u32, stroke: &Stroke) -> CanvasImage {
+    let mut field = CanvasImage::new(w, h, 0);
+    let mut max_x = 0;
+    let mut max_y = 0;
+    let mut max_d = 0;
+    for y in 0..h as usize {
+        for x in 0..w as usize {
+            let v = Vec2d::new(x as f64, y as f64);
+            if inside_curve(stroke, &v) {
+                let d = get_distance_between_nearest_stroke(stroke, &v);
+                if d > max_d {
+                    max_d = d;
+                    max_x = x;
+                    max_y = y;
+                }
+            }
+        }
+    }
+
+    let mut source_normals: Vec<(Vec2d, Vec3d)>= Vec::new();
+    let num_points = stroke.points.len();
+    let EPS = 10e-6;
+    for i in 0..num_points {
+        let p = Vec2d::new(stroke.points[i].x, stroke.points[i].y);
+        let prev = &stroke.points[(i-1 + num_points) % num_points];
+        let next = &stroke.points[(i+1 + num_points) % num_points];
+        let s = -(next.x - prev.x) / (next.y - prev.y);
+        if s == 0.0 {
+            source_normals.push((p, Vec3d::new(0.0, 1.0, 0.0)));
+        } else if s.is_infinite() {
+            source_normals.push((p, Vec3d::new(1.0, 0.0, 0.0)));
+        } else if s.is_nan() {
+            source_normals.push((p, Vec3d::new(0.0, 0.0, 0.0)));
+        } else {
+            let mut dir = Vec2d::new(1.0, s).normalize();
+            let v = Vec2d::new(stroke.points[i].x, stroke.points[i].y);
+            if inside_curve(stroke, &(v + dir.clone().smul(EPS))) {
+                dir = dir.smul(-1.0);
+            }
+            source_normals.push((p, Vec3d::from_vec2d(dir)));
+        }
+    }
+//    source_normals.push((Vec2d::new(max_x as f64, max_y as f64), Vec3d::new(0.0, 0.0, 1.0).smul(num_points as f64 / 3.0)));
+    for y in 0..h as usize {
+        for x in 0..w as usize {
+            let v = Vec2d::new(x as f64, y as f64);
+            if inside_curve(stroke, &v) {
+                field.set_color(x, y, diffuse_normal(&source_normals, v).to_color());
+            } else {
+                field.set_color(x, y, Color { r: 0, g: 0, b: 0, a: 0, });
+            }
+        }
+    }
+
+    field
+}
+
 impl Model<Message> for CanvasModel {
     fn update(&mut self, message: &Message, widget_handler: &mut HandlerType) {
         match message {
@@ -314,16 +430,43 @@ impl Model<Message> for CanvasModel {
             },
             &Message::StrokeCloseButton => { // FIXME fixed layer assignment
                 let st = get_closed_stroke(&self.layers[1].strokes);
-                if let Some(rect) = self.layers[0].image.draw_stroke(&st, &self.current_brush) {
-                    self.update_cache(&rect);
-                }
+
+                let normal_field = get_normal_field(self.width as u32, self.height as u32, &st[0]); // FIXME check size of st
+                self.layers[0].image = normal_field;
+                self.layers[0].image.draw_stroke(&st, &self.current_brush);
+                let rect = Rect::new(0, 0, self.width as i32, self.height as i32);
+                self.update_cache(&rect);
             },
             &Message::ClearCanvasButton => {
                 self.image_cache = vec![0; (self.width * self.height * 4.0) as usize];
                 for l in &mut self.layers {
                     l.clear();
                 }
-            }
+            },
+            &Message::OutputButton => {
+                let path = Path::new("out/out.ppm");
+                let mut file = match File::create(&path) {
+                    Ok(file) => file,
+                    Err(why) => panic!("couldn't create {}: {}", path.display(), why),
+                };
+                file.write_all(self.output_ppm().as_bytes());
+                let cmd_res = Command::new("./bin/edge").output().expect("failed to execute process");
+//                println!("{}", String::from_utf8_lossy(&cmd_res.stdout));
+                let path_res_img = Path::new("out/matched.png");
+                let path_res = Path::new("out/result.txt");
+                let mut file = match File::open(&path_res) {
+                    Ok(file) => file,
+                    Err(why) => panic!("couldn't open {}: {}", path_res.display(), why),
+                };
+                let mut score_str = String::new();
+                file.read_to_string(&mut score_str);
+//                println!("{}", score_str);
+                score_str.pop();
+                let score: f64 = score_str.parse().unwrap();
+                println!("score: {}", score);
+
+                Command::new("open").arg("out/matched.png").output().expect("failed to execute process");
+            },
             _ => (),
         }
         if let &mut HandlerType::Area(ref area) = widget_handler {
@@ -373,5 +516,28 @@ impl CanvasModel {
         for l in &self.layers {
             l.composite(&mut self.image_cache, &rect);
         }
+    }
+
+    fn output_ppm(&mut self) -> String {
+        let mut buff = String::new();
+        let iw = self.width as i32;
+        let ih = self.height as i32;
+        buff.push_str("P3\n");
+        buff.push_str(format!("{} {}\n255\n", self.width as i32, self.height as i32).as_str());
+        let mut brush = Brush::new();
+        brush.size = 1.0;
+        brush.color = Color::new(1.0, 1.0, 1.0, 1.0);
+        let mut data = vec![0; (iw * ih * 4) as usize];
+        for l in &mut self.layers {
+            l.image.draw_stroke(&l.strokes, &brush);
+            l.composite(&mut data, &Rect::new(0, 0, iw, ih));
+        }
+        for y in 0..(self.height as usize) {
+            for x in 0..(self.width as usize) {
+                let i = (y * iw as usize + x) * 4;
+                buff.push_str(format!("{} {} {}\n", data[i+0], data[i+1], data[i+2]).as_str());
+            }
+        }
+        buff
     }
 }
